@@ -1,0 +1,143 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="64" height="64" role="img" aria-label="DouyinLiveOptimizer icon">
+  <title>DouyinLiveOptimizer</title>
+
+  <defs>
+    <linearGradient id="dloBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#12121A" />
+      <stop offset="100%" stop-color="#1C1C2A" />
+    </linearGradient>
+
+    <linearGradient id="dloPink" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF5C7A" />
+      <stop offset="100%" stop-color="#FE2C55" />
+    </linearGradient>
+
+    <linearGradient id="dloCyan" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#25F4EE" />
+      <stop offset="100%" stop-color="#00C8D7" />
+    </linearGradient>
+
+    <filter id="dloShadow" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#000000" flood-opacity="0.5" />
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" rx="115" fill="url(#dloBg)" />
+
+  <!-- 科技感外环 -->
+  <g opacity="0.9">
+    <circle
+      cx="256"
+      cy="256"
+      r="205"
+      fill="none"
+      stroke="url(#dloCyan)"
+      stroke-width="12"
+      stroke-dasharray="26 18"
+      opacity="0.5"
+    />
+    <circle
+      cx="256"
+      cy="256"
+      r="186"
+      fill="none"
+      stroke="#25F4EE"
+      stroke-width="3"
+      opacity="0.3"
+    />
+
+    <!-- 右上角齿轮 -->
+    <g transform="translate(400 112) rotate(18) scale(1.1)">
+      <g fill="url(#dloCyan)">
+        <rect x="-7" y="-37" width="14" height="17" rx="5" />
+        <rect x="-7" y="-37" width="14" height="17" rx="5" transform="rotate(45)" />
+        <rect x="-7" y="-37" width="14" height="17" rx="5" transform="rotate(90)" />
+        <rect x="-7" y="-37" width="14" height="17" rx="5" transform="rotate(135)" />
+        <rect x="-7" y="-37" width="14" height="17" rx="5" transform="rotate(180)" />
+        <rect x="-7" y="-37" width="14" height="17" rx="5" transform="rotate(225)" />
+        <rect x="-7" y="-37" width="14" height="17" rx="5" transform="rotate(270)" />
+        <rect x="-7" y="-37" width="14" height="17" rx="5" transform="rotate(315)" />
+        <circle cx="0" cy="0" r="23" />
+      </g>
+      <circle cx="0" cy="0" r="9.5" fill="#141420" />
+      <circle cx="0" cy="0" r="9.5" fill="none" stroke="#9FFFF8" stroke-opacity="0.35" stroke-width="3" />
+    </g>
+
+    <!-- 左下角喇叭（静音） -->
+    <g transform="translate(112 402) rotate(45) scale(1.15)">
+      <path
+        d="M -8 44 L -8 0 C -20 -4 -28 -15 -28 -29 L -28 -52 L -11 -35 L 11 -35 L 28 -52 L 28 -29 C 28 -15 20 -4 8 0 L 8 44 A 9 9 0 0 1 -8 44 Z"
+        fill="url(#dloCyan)"
+        stroke="#00383D"
+        stroke-opacity="0.4"
+        stroke-width="2"
+        stroke-linejoin="round"
+      />
+      <path
+        d="M -3 -22 L 14 0 L -3 22"
+        fill="none"
+        stroke="#141420"
+        stroke-width="9"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      />
+    </g>
+  </g>
+
+  <!-- 主音符（抖音） -->
+  <g filter="url(#dloShadow)">
+    <path
+      d="M 300 118
+         C 300 152, 326 176, 360 180
+         L 360 236
+         C 336 234, 314 226, 296 214
+         L 296 344
+         C 296 396, 254 438, 202 438
+         C 152 438, 112 398, 112 348
+         C 112 300, 150 260, 198 258
+         C 206 257, 214 258, 222 260
+         L 222 312
+         C 214 310, 206 309, 198 309
+         C 174 309, 156 327, 156 348
+         C 156 370, 176 388, 198 388
+         C 221 388, 240 370, 240 348
+         L 240 118
+         Z"
+      fill="url(#dloPink)"
+    />
+    <path
+      d="M 268 148 Q 282 176 312 186"
+      fill="none"
+      stroke="#FFFFFF"
+      stroke-width="10"
+      stroke-linecap="round"
+      opacity="0.4"
+    />
+  </g>
+
+  <!-- 底部 OPTIMIZER 条 -->
+  <g>
+    <rect x="156" y="452" width="200" height="38" rx="19" fill="#25F4EE" opacity="0.14" />
+    <rect
+      x="156"
+      y="452"
+      width="200"
+      height="38"
+      rx="19"
+      fill="none"
+      stroke="#25F4EE"
+      stroke-width="2"
+      opacity="0.5"
+    />
+    <text
+      x="256"
+      y="479"
+      font-family="Arial, sans-serif"
+      font-weight="900"
+      font-size="22"
+      fill="#FFFFFF"
+      text-anchor="middle"
+      letter-spacing="3"
+    >OPTIMIZER</text>
+  </g>
+</svg>
