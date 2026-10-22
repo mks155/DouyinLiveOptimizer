@@ -3,7 +3,7 @@
 // @namespace    https://github.com/mks155
 // @homepageURL  https://github.com/mks155/DouyinLiveOptimizer
 // @icon         https://raw.githubusercontent.com/mks155/DouyinLiveOptimizer/refs/heads/main/docs/icon.svg
-// @version      1.0.0
+// @version      1.0.1
 // @description  首页默认静音、进房自动切最高画质、画面弹幕悬停 +1、弹幕输入框 ↑↓ 翻历史 | Auto mute, auto best quality, on-video danmaku +1, send history on live.douyin.com
 // @author       mks155
 // @copyright    2026, mks155 (https://github.com/mks155)

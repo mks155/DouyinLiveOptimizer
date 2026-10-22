@@ -20,9 +20,9 @@
 
 - [作者主页](https://mks155.github.io) — 查看作者其他脚本
 - [GitHub 仓库](https://github.com/mks155/DouyinLiveOptimizer) — 欢迎 [Star](https://github.com/mks155/DouyinLiveOptimizer)，反馈请提 [Issue](https://github.com/mks155/DouyinLiveOptimizer/issues)
-- **[ScriptCat 安装页](https://scriptcat.org/)** — 首选推荐
-- [Greasy Fork 安装页](https://greasyfork.org/)
-- ~~[OpenUserJS 安装页](https://openuserjs.org/)~~
+- **[ScriptCat 安装页](https://scriptcat.org/zh-CN/script-show-page/8664)** — 首选推荐
+- [Greasy Fork 安装页](https://greasyfork.org/zh-CN/scripts/601627-%E6%8A%96%E9%9F%B3%E7%9B%B4%E6%92%AD%E4%BC%98%E5%8C%96%E5%99%A8-douyinliveoptimizer)
+- ~~[OpenUserJS 安装页](https://openuserjs.org/scripts/mks155/%E6%8A%96%E9%9F%B3%E7%9B%B4%E6%92%AD%E4%BC%98%E5%8C%96%E5%99%A8_DouyinLiveOptimizer)~~
 
 ## 功能清单
 
