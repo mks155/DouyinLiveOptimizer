@@ -3,7 +3,7 @@
 // @namespace    https://github.com/mks155
 // @homepageURL  https://github.com/mks155/DouyinLiveOptimizer
 // @icon         https://raw.githubusercontent.com/mks155/DouyinLiveOptimizer/refs/heads/main/docs/icon.svg
-// @version      1.0.1
+// @version      1.0.2
 // @description  首页默认静音、进房自动切最高画质、画面弹幕悬停 +1、弹幕输入框 ↑↓ 翻历史 | Auto mute, auto best quality, on-video danmaku +1, send history on live.douyin.com
 // @author       mks155
 // @copyright    2026, mks155 (https://github.com/mks155)
@@ -1396,9 +1396,9 @@ __ch.postMessage({k:'ready'});
         }
     }
 
-    /** 进房后去掉 URL 参数，只留 /<房间号>；用 replaceState，不触发跳转，等站点启动后再清 */
+    /** 只留 /<房间号>：?query 与 #hash 都去掉；replaceState 不刷新、不加历史 */
     function cleanRoomUrl() {
-        if (!isRoom() || !location.search) return false;
+        if (!isRoom() || !(location.search || location.hash)) return false;
         try {
             history.replaceState(history.state, '', location.pathname);
             return true;
@@ -1407,41 +1407,119 @@ __ch.postMessage({k:'ready'});
         }
     }
 
+    /** 房间链接改成纯 pathname，点开/右键/中键开出的新标签从第一帧就干净 */
+    function stripRoomLink(a) {
+        if (!isRoomLink(a)) return;
+        const href = a.getAttribute('href') || '';
+        let u;
+        try {
+            u = new URL(href, location.href);
+        } catch (e) {
+            return;
+        }
+        if (!u.search && !u.hash) return;
+        a.setAttribute('href', u.pathname);
+    }
+
+    /**
+     * URL 参数（enter_from / share_token / u_code / did 等）属于来源与设备追踪，进房前就清：
+     * document-start 当场清、链接 href 提前改、window.open 兜住新标签；load 后再兜底几次。
+     */
     function installUrlCleaner() {
         const origReplace = history.replaceState.bind(history);
         const clean = () => {
-            if (!isRoom() || !location.search) return;
+            if (!isRoom() || !(location.search || location.hash)) return;
             try {
                 origReplace(history.state, '', location.pathname);
             } catch (e) {
             }
         };
-        // 站点自己改 URL 时也顺手清掉
-        let booted = document.readyState === 'complete';
+
+        clean();
+
+        // 站点自己 pushState/replaceState 写回参数时立即清
         for (const k of ['pushState', 'replaceState']) {
             const orig = history[k];
             if (typeof orig !== 'function') continue;
             try {
                 history[k] = function () {
                     const r = orig.apply(this, arguments);
-                    if (booted) clean();
+                    clean();
                     return r;
                 };
             } catch (e) {
             }
         }
-        const start = () => {
-            booted = true;
+
+        const fromEvent = (e) => {
+            const t = e.target;
+            if (!t || typeof t.closest !== 'function') return;
+            stripRoomLink(t.closest('a[href]'));
+        };
+        // pointerdown/contextmenu 早于默认动作，中键与右键「在新标签页打开」也覆盖
+        for (const type of ['pointerdown', 'mousedown', 'contextmenu', 'click', 'auxclick']) {
+            document.addEventListener(type, fromEvent, { capture: true, passive: true });
+        }
+
+        // 动态插入的卡片：只扫新增节点，避免整页轮询
+        try {
+            new MutationObserver((records) => {
+                for (const r of records) {
+                    for (const node of r.addedNodes) {
+                        if (node.nodeType !== 1) continue;
+                        if (node.tagName === 'A') stripRoomLink(node);
+                        if (node.firstElementChild) node.querySelectorAll('a[href*="?"]').forEach(stripRoomLink);
+                    }
+                }
+            }).observe(document.documentElement || document, { childList: true, subtree: true });
+        } catch (e) {
+        }
+
+        // 脚本里 window.open(房间 URL) 的也摘掉参数；站点会反复重写 window.open，故用访问器兜住后续赋值
+        const stripOpenArg = (fn) => {
+            if (typeof fn !== 'function' || fn.__dloPatched) return fn;
+            const patched = function (url, ...rest) {
+                try {
+                    const u = new URL(String(url), location.href);
+                    if (u.hostname === 'live.douyin.com' && /^\/\d+/.test(u.pathname)) url = u.pathname;
+                } catch (e) {
+                }
+                return fn.apply(this, [url, ...rest]);
+            };
+            patched.__dloPatched = true;
+            return patched;
+        };
+        const patchOpen = () => {
+            try {
+                const W = pageWindow();
+                let impl = stripOpenArg(W.open);
+                if (typeof impl !== 'function') return;
+                Object.defineProperty(W, 'open', {
+                    configurable: true,
+                    get: () => impl,
+                    set: (fn) => {
+                        impl = stripOpenArg(fn);
+                    },
+                });
+            } catch (e) {
+            }
+        };
+        patchOpen();
+        for (const ms of [300, 1200, 3000, 6000]) setTimeout(patchOpen, ms);
+
+        // 兜底：load 后站点可能再用 location 写入参数
+        const backstop = () => {
             clean();
-            // 站点启动时机不定，随后再补几次
+            patchOpen();
             let n = 0;
             const t = setInterval(() => {
                 clean();
                 if (++n >= 8) clearInterval(t);
             }, 800);
+            setTimeout(patchOpen, 1500);
         };
-        if (booted) start();
-        else window.addEventListener('load', start, { once: true });
+        if (document.readyState === 'complete') backstop();
+        else window.addEventListener('load', backstop, { once: true });
     }
 
     // ---------- styles ----------
