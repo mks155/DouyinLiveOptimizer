@@ -3,8 +3,8 @@
 // @namespace    https://github.com/mks155
 // @homepageURL  https://github.com/mks155/DouyinLiveOptimizer
 // @icon         https://raw.githubusercontent.com/mks155/DouyinLiveOptimizer/refs/heads/main/docs/icon.svg
-// @version      1.0.2
-// @description  首页默认静音、进房自动切最高画质、画面弹幕悬停 +1、弹幕输入框 ↑↓ 翻历史 | Auto mute, auto best quality, on-video danmaku +1, send history on live.douyin.com
+// @version      1.1.0
+// @description  首页默认静音、进房自动切最高画质、不弹展馆集星浮层、画面弹幕悬停 +1、弹幕输入框 ↑↓ 翻历史 | Auto mute, auto best quality, no gift-wall popup, on-video danmaku +1, send history on live.douyin.com
 // @author       mks155
 // @copyright    2026, mks155 (https://github.com/mks155)
 // @match        *://live.douyin.com/*
@@ -64,6 +64,8 @@
         targetQuality: QUALITY_AUTO,
         enableScreenPlusOne: true,
         enableDanmakuHistory: true,
+        // 屏蔽「点亮展馆帮主播集星」浮层（按天生效，复用站点自己的关闭标记）
+        enableNoGiftGuide: true,
         themeMode: 'auto'
     };
 
@@ -366,6 +368,7 @@
             targetQuality: d.targetQuality ?? DEFAULT_SETTINGS.targetQuality,
             enableScreenPlusOne: d.enableScreenPlusOne ?? DEFAULT_SETTINGS.enableScreenPlusOne,
             enableDanmakuHistory: d.enableDanmakuHistory ?? DEFAULT_SETTINGS.enableDanmakuHistory,
+            enableNoGiftGuide: d.enableNoGiftGuide ?? DEFAULT_SETTINGS.enableNoGiftGuide,
             themeMode: THEME_MODES.includes(d.themeMode) ? d.themeMode : DEFAULT_SETTINGS.themeMode
         };
     }
@@ -375,6 +378,7 @@
             targetQuality: s.targetQuality,
             enableScreenPlusOne: s.enableScreenPlusOne,
             enableDanmakuHistory: s.enableDanmakuHistory,
+            enableNoGiftGuide: s.enableNoGiftGuide,
             themeMode: s.themeMode
         });
     }
@@ -1522,6 +1526,93 @@ __ch.postMessage({k:'ready'});
         else window.addEventListener('load', backstop, { once: true });
     }
 
+    // ---------- 展馆集星浮层 ----------
+    // 站点的礼物引导浮层（展馆 / 粉丝团任务 / 心愿单）共用一个按天标记：
+    // localStorage.GiftGuideDateMark[类型] === 当天 就当天不再弹，点 × 关闭写的是同一个值。
+    const GIFT_GUIDE_MARK_KEY = 'GiftGuideDateMark';
+    const GIFT_GUIDE_EXHIBITION = 'GIFT_EXHIBITION';
+    const GIFT_GUIDE_TITLE = '点亮展馆帮主播集星';
+
+    /** 站点自己的日期格式：getMonth() 0 基且不补零，2026-10-25 是 "2026-9-25" */
+    function giftGuideToday() {
+        const d = new Date();
+        return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+    }
+
+    /**
+     * 预写「今天已关过」：组件首帧就判定为已关闭，浮层根本不渲染。
+     * 必须赶在 React 渲染前写入 —— 该判定是 useMemo(deps 只有关闭状态)，写晚了不会重算。
+     */
+    function markGiftGuideClosed() {
+        try {
+            const W = pageWindow();
+            const raw = W.localStorage.getItem(GIFT_GUIDE_MARK_KEY);
+            const mark = raw ? JSON.parse(raw) : {};
+            if (!mark || typeof mark !== 'object') return;
+            const today = giftGuideToday();
+            if (mark[GIFT_GUIDE_EXHIBITION] === today) return;
+            mark[GIFT_GUIDE_EXHIBITION] = today;
+            W.localStorage.setItem(GIFT_GUIDE_MARK_KEY, JSON.stringify(mark));
+        } catch (e) {
+        }
+    }
+
+    /** 已压住的浮层：元素 -> 自身 style 观察器（定位时站点会重写 style，得跟着再压一次） */
+    const giftGuideHidden = new Map();
+    let giftGuideObserver = null;
+
+    /** 兜底：标记失效（站点改键名或日期格式）时，浮层一出现就藏起来；按标题文案找，不依赖哈希类名 */
+    function watchGiftGuidePopup() {
+        if (giftGuideObserver) return;
+        const hide = (tip) => {
+            if (tip.style) tip.style.setProperty('display', 'none', 'important');
+            tip.setAttribute('hidden', '');
+        };
+        const suppress = (tip) => {
+            if (!tip || giftGuideHidden.has(tip)) return;
+            hide(tip);
+            const obs = new MutationObserver(() => {
+                if (tip.isConnected) hide(tip);
+            });
+            obs.observe(tip, { attributes: true, attributeFilter: ['style', 'class'] });
+            giftGuideHidden.set(tip, obs);
+        };
+        const scan = (node) => {
+            if (!node || node.nodeType !== 1) return;
+            const tip = node.closest?.('.dylvue-tooltip') || node.querySelector?.('.dylvue-tooltip');
+            if (!tip || giftGuideHidden.has(tip)) return;
+            if ((tip.textContent || '').indexOf(GIFT_GUIDE_TITLE) === -1) return;
+            suppress(tip);
+        };
+        giftGuideObserver = new MutationObserver((records) => {
+            for (const r of records) {
+                for (const node of r.addedNodes) scan(node);
+            }
+        });
+        try {
+            giftGuideObserver.observe(document.documentElement || document, { childList: true, subtree: true });
+        } catch (e) {
+            giftGuideObserver = null;
+        }
+    }
+
+    /** 开关关掉时把还压着的浮层放出来；已写入的当天标记等同用户自己关过一次，不撤回 */
+    function restoreGiftGuidePopups() {
+        if (giftGuideObserver) {
+            giftGuideObserver.disconnect();
+            giftGuideObserver = null;
+        }
+        for (const [tip, obs] of giftGuideHidden) {
+            try {
+                obs.disconnect();
+                tip.style.removeProperty('display');
+                tip.removeAttribute('hidden');
+            } catch (e) {
+            }
+        }
+        giftGuideHidden.clear();
+    }
+
     // ---------- styles ----------
     function injectStyles() {
         if (document.getElementById('dlo-styles')) return;
@@ -1769,6 +1860,7 @@ html[dark] #dlo-settings-panel{
                 <label class="row"><input type="checkbox" id="dlo-mute" ${this.settings.muteOnHome ? 'checked' : ''}/> 首页默认静音</label>
                 <label class="row"><input type="checkbox" id="dlo-plus1" ${this.settings.enableScreenPlusOne ? 'checked' : ''}/> 画面弹幕 +1</label>
                 <label class="row"><input type="checkbox" id="dlo-history" ${this.settings.enableDanmakuHistory ? 'checked' : ''}/> 弹幕输入框上下键历史</label>
+                <label class="row"><input type="checkbox" id="dlo-nogiftguide" ${this.settings.enableNoGiftGuide !== false ? 'checked' : ''}/> 屏蔽「点亮展馆」浮层</label>
                 <div class="actions">
                     <button type="button" class="btn-ghost" id="dlo-close">关闭</button>
                     <button type="button" class="btn-primary" id="dlo-save">保存并应用</button>
@@ -1823,6 +1915,7 @@ html[dark] #dlo-settings-panel{
                     targetQuality: panel.querySelector('#dlo-quality-select')?.value ?? QUALITY_AUTO,
                     enableScreenPlusOne: !!panel.querySelector('#dlo-plus1')?.checked,
                     enableDanmakuHistory: !!panel.querySelector('#dlo-history')?.checked,
+                    enableNoGiftGuide: !!panel.querySelector('#dlo-nogiftguide')?.checked,
                     themeMode: THEME_MODES.includes(this.settings.themeMode) ? this.settings.themeMode : 'auto'
                 };
                 saveSettings(this.settings);
@@ -1871,6 +1964,12 @@ html[dark] #dlo-settings-panel{
             if (s.muteOnHome) startHomeMute();
             else stopMute();
             if (isRoom()) quality.run();
+            if (s.enableNoGiftGuide !== false) {
+                markGiftGuideClosed();
+                watchGiftGuidePopup();
+            } else {
+                restoreGiftGuidePopups();
+            }
         }
 
         ui.mountFab();
@@ -1925,6 +2024,12 @@ html[dark] #dlo-settings-panel{
 
     // 房间 URL 上的参数去掉，只留 https://live.douyin.com/<房间号>
     installUrlCleaner();
+
+    // 展馆集星浮层：标记要赶在组件首帧渲染前写，所以放在 document-start，不等 main()
+    if (settings.enableNoGiftGuide !== false) {
+        markGiftGuideClosed();
+        watchGiftGuidePopup();
+    }
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', () => setTimeout(main, 300));
