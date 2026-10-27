@@ -3,8 +3,8 @@
 // @namespace    https://github.com/mks155
 // @homepageURL  https://github.com/mks155/DouyinLiveOptimizer
 // @icon         https://raw.githubusercontent.com/mks155/DouyinLiveOptimizer/refs/heads/main/docs/icon.svg
-// @version      1.1.0
-// @description  首页默认静音、进房自动切最高画质、不弹展馆集星浮层、画面弹幕悬停 +1、弹幕输入框 ↑↓ 翻历史 | Auto mute, auto best quality, no gift-wall popup, on-video danmaku +1, send history on live.douyin.com
+// @version      1.3.1
+// @description  首页默认静音、进房自动切最高画质、自动领取看播积分、不弹展馆集星浮层、不弹无操作暂停、画面弹幕悬停 +1、弹幕输入框 ↑↓ 翻历史 | Auto mute, auto best quality, auto claim watch points, no gift-wall popup, no idle-pause popup, on-video danmaku +1, send history on live.douyin.com
 // @author       mks155
 // @copyright    2026, mks155 (https://github.com/mks155)
 // @match        *://live.douyin.com/*
@@ -66,6 +66,10 @@
         enableDanmakuHistory: true,
         // 屏蔽「点亮展馆帮主播集星」浮层（按天生效，复用站点自己的关闭标记）
         enableNoGiftGuide: true,
+        // 屏蔽「长时间无操作，即将暂停播放」弹窗（连带它带来的自动暂停）
+        enableNoIdlePause: true,
+        // 自动领取「看直播领积分」盒子的可领取奖励（走状态判断，不点 DOM）
+        enablePointClaim: false,
         themeMode: 'auto'
     };
 
@@ -369,6 +373,8 @@
             enableScreenPlusOne: d.enableScreenPlusOne ?? DEFAULT_SETTINGS.enableScreenPlusOne,
             enableDanmakuHistory: d.enableDanmakuHistory ?? DEFAULT_SETTINGS.enableDanmakuHistory,
             enableNoGiftGuide: d.enableNoGiftGuide ?? DEFAULT_SETTINGS.enableNoGiftGuide,
+            enableNoIdlePause: d.enableNoIdlePause ?? DEFAULT_SETTINGS.enableNoIdlePause,
+            enablePointClaim: d.enablePointClaim ?? DEFAULT_SETTINGS.enablePointClaim,
             themeMode: THEME_MODES.includes(d.themeMode) ? d.themeMode : DEFAULT_SETTINGS.themeMode
         };
     }
@@ -379,6 +385,8 @@
             enableScreenPlusOne: s.enableScreenPlusOne,
             enableDanmakuHistory: s.enableDanmakuHistory,
             enableNoGiftGuide: s.enableNoGiftGuide,
+            enableNoIdlePause: s.enableNoIdlePause,
+            enablePointClaim: s.enablePointClaim,
             themeMode: s.themeMode
         });
     }
@@ -1613,6 +1621,199 @@ __ch.postMessage({k:'ready'});
         giftGuideHidden.clear();
     }
 
+    // ---------- 长时间无操作暂停 ----------
+    // 站点 PausePop 组件的 eb()：cookie.LivePausePop.closeNum >= 2 时返回 false，
+    // 监听 effect 就直接跳过排暂停定时器 —— 既不弹窗也不暂停。
+    // 这正是站点「今天已关过 2 次就不再烦你」的官方分支，写它的 cookie 即可，
+    // 不用改 DOM、不用模拟点击、也不用拦 visibilitychange。
+    const IDLE_PAUSE_COOKIE = 'LivePausePop';
+    const IDLE_PAUSE_CLOSE_LIMIT = 2;
+    const IDLE_PAUSE_MAX_AGE = 3153600000;
+
+    /** 原始 cookie 值（未解码），备份与还原用 */
+    function idlePauseRaw() {
+        const m = document.cookie.match(new RegExp('(?:^|;\\s*)' + IDLE_PAUSE_COOKIE + '=([^;]*)'));
+        return m ? m[1] : '';
+    }
+
+    /** 站点 el()：cookie 是双重编码，解两层才是对象 */
+    function readIdlePauseState() {
+        const raw = idlePauseRaw();
+        if (!raw) return {};
+        try {
+            let v = JSON.parse(decodeURIComponent(raw));
+            if (typeof v === 'string') v = JSON.parse(decodeURIComponent(v));
+            return v && typeof v === 'object' ? v : {};
+        } catch (e) {
+            return {};
+        }
+    }
+
+    /** 站点 et() + setItem：JSON 两遍、encodeURIComponent 两遍，格式错就读不出来 */
+    function writeIdlePauseState(state) {
+        try {
+            const payload = encodeURIComponent(JSON.stringify(state));
+            document.cookie =
+                IDLE_PAUSE_COOKIE +
+                '=' +
+                encodeURIComponent(JSON.stringify(payload)) +
+                '; path=/; domain=.douyin.com; max-age=' +
+                IDLE_PAUSE_MAX_AGE;
+        } catch (e) {
+        }
+    }
+
+    function writeIdlePauseRaw(raw) {
+        try {
+            document.cookie = raw
+                ? IDLE_PAUSE_COOKIE + '=' + raw + '; path=/; domain=.douyin.com; max-age=' + IDLE_PAUSE_MAX_AGE
+                : IDLE_PAUSE_COOKIE + '=; path=/; domain=.douyin.com; max-age=0';
+        } catch (e) {
+        }
+    }
+
+    /** 必须在 PausePop 首次读取前写；其余字段（todayCount / todayShowRoom / lastTimer）原样保留 */
+    function suppressIdlePause() {
+        const state = readIdlePauseState();
+        if (state.closeNum >= IDLE_PAUSE_CLOSE_LIMIT) return;
+        const d = loadStore();
+        if (typeof d.idlePauseBackup !== 'string') saveStore({ idlePauseBackup: idlePauseRaw() });
+        writeIdlePauseState(Object.assign({}, state, { closeNum: IDLE_PAUSE_CLOSE_LIMIT }));
+    }
+
+    /** 关掉开关时写回站点原值（原来没有 cookie 就删掉） */
+    function restoreIdlePause() {
+        const d = loadStore();
+        if (typeof d.idlePauseBackup !== 'string') return;
+        writeIdlePauseRaw(d.idlePauseBackup);
+        saveStore({ idlePauseBackup: null });
+    }
+
+    // ---------- 看直播领积分 ----------
+    // 站点「看直播领积分」面板是 Lynx 组件，文案和接口都不在网页 JS 里，只在这两个请求上：
+    //   GET /webcast/quiz/box/enter?room_id=<房间>&box_id=-1   查箱子
+    //   GET /webcast/quiz/box/click?room_id=<房间>&box_id=<N>  领取，返回最新箱子
+    // 箱子 status：0 未开启 / 1 倒计时中 / 2 可领取 / 3 已领取。
+    // 只领 status===2 的，不碰 DOM、不模拟点击。
+    // 进房 1 分钟后查第一次，之后按箱子自己的倒计时定时领（加 10-30 秒随机抖动），全部领完就停。
+    const POINT_API = '/webcast/quiz/box/';
+    const POINT_BOX_COUNTING = 1;
+    const POINT_BOX_READY = 2;
+    const POINT_BOX_CLAIMED = 3;
+    const POINT_ENTER_DELAY = 60 * 1000;    // 进房多久后开始查
+    const POINT_RETRY_GAP = 60 * 1000;      // 有箱子可领却没领成时的重试间隔
+    const POINT_IDLE_GAP = 5 * 60 * 1000;   // 只剩未开启的箱子时的慢查间隔
+    const POINT_CLAIM_GAP = 900;            // 连续领取之间
+    const POINT_JITTER_MIN = 10 * 1000;     // 定时领取的随机抖动
+    const POINT_JITTER_MAX = 30 * 1000;
+
+    let pointBusy = false;
+    let pointTimer = null;
+    let pointRoom = '';
+    let pointDone = '';
+
+    function pointJitter() {
+        return POINT_JITTER_MIN + Math.round(Math.random() * (POINT_JITTER_MAX - POINT_JITTER_MIN));
+    }
+
+    /** 同一时间只留一个定时器 */
+    function schedulePointCheck(delayMs) {
+        if (pointTimer) clearTimeout(pointTimer);
+        pointTimer = setTimeout(() => {
+            pointTimer = null;
+            runPointClaim();
+        }, delayMs);
+    }
+
+    function stopPointClaim() {
+        if (pointTimer) clearTimeout(pointTimer);
+        pointTimer = null;
+        pointRoom = '';
+    }
+
+    /** 进房后挂首查；换房间重新计时，离开房间或已领完就不再挂任何任务 */
+    function armPointClaim() {
+        const roomId = pointRoomId();
+        if (!roomId) {
+            stopPointClaim();
+            return;
+        }
+        if (pointDone === roomId) return;
+        if (pointTimer && pointRoom === roomId) return;
+        const since = Date.now() - (Number(loadStore().pointCheckedAt) || 0);
+        pointRoom = roomId;
+        schedulePointCheck((since < POINT_ENTER_DELAY ? POINT_ENTER_DELAY - since : POINT_ENTER_DELAY) + pointJitter());
+    }
+
+    function pointRoomId() {
+        const m = /^\/(\d{5,})/.exec(location.pathname);
+        return m ? m[1] : '';
+    }
+
+    /** 站点 Web 端这套接口不校验签名，带上公共参数即可，登录态走 cookie */
+    function pointApi(name, params) {
+        const q = new URLSearchParams(
+            Object.assign(
+                {
+                    aid: '6383',
+                    app_name: 'douyin_web',
+                    live_id: '1',
+                    device_platform: 'web',
+                    language: 'zh-CN',
+                    enter_from: 'link_share'
+                },
+                params
+            )
+        );
+        return fetch(POINT_API + name + '?' + q.toString(), { credentials: 'include' })
+            .then((r) => (r.ok ? r.json() : null))
+            .catch(() => null);
+    }
+
+    /** 领一轮：查状态 → 逐个领取 → 按箱子倒计时排下一次 */
+    async function runPointClaim() {
+        if (pointBusy) return;
+        const roomId = pointRoomId();
+        if (!roomId) return;
+        pointBusy = true;
+        saveStore({ pointCheckedAt: Date.now() });
+        try {
+            const res = await pointApi('enter', { room_id: roomId, box_id: '-1' });
+            let boxes = res && res.status_code === 0 && res.data ? res.data.boxs : null;
+            if (!Array.isArray(boxes)) {
+                // 查失败就等一会儿再来，别把定时链断掉
+                pointRoom = roomId;
+                schedulePointCheck(POINT_RETRY_GAP + pointJitter());
+                return;
+            }
+            let claims = 0;
+            for (const box of boxes.filter((b) => b && b.status === POINT_BOX_READY)) {
+                const r = await pointApi('click', { room_id: roomId, box_id: String(box.box_id) });
+                if (!r || r.status_code !== 0) break;
+                claims += 1;
+                if (r.data && Array.isArray(r.data.boxs)) boxes = r.data.boxs;
+                await new Promise((ok) => setTimeout(ok, POINT_CLAIM_GAP));
+            }
+            if (claims) log('point claimed', { roomId, claims });
+            const pending = boxes.filter((b) => b && b.status !== POINT_BOX_CLAIMED);
+            if (!pending.length) {
+                // 全领完就彻底收掉，不留定时器在后台
+                pointDone = roomId;
+                stopPointClaim();
+                return;
+            }
+            // 有箱子在倒计时就等它走完（抖一下，别整点上报）；没领成/没开的兜底慢查
+            const counting = pending.filter((b) => b.status === POINT_BOX_COUNTING && b.countdown_time > 0);
+            let wait = POINT_IDLE_GAP;
+            if (counting.length) wait = Math.min(...counting.map((b) => b.countdown_time)) * 1000;
+            else if (pending.some((b) => b.status === POINT_BOX_READY)) wait = POINT_RETRY_GAP;
+            pointRoom = roomId;
+            schedulePointCheck(wait + pointJitter());
+        } finally {
+            pointBusy = false;
+        }
+    }
+
     // ---------- styles ----------
     function injectStyles() {
         if (document.getElementById('dlo-styles')) return;
@@ -1861,6 +2062,8 @@ html[dark] #dlo-settings-panel{
                 <label class="row"><input type="checkbox" id="dlo-plus1" ${this.settings.enableScreenPlusOne ? 'checked' : ''}/> 画面弹幕 +1</label>
                 <label class="row"><input type="checkbox" id="dlo-history" ${this.settings.enableDanmakuHistory ? 'checked' : ''}/> 弹幕输入框上下键历史</label>
                 <label class="row"><input type="checkbox" id="dlo-nogiftguide" ${this.settings.enableNoGiftGuide !== false ? 'checked' : ''}/> 屏蔽「点亮展馆」浮层</label>
+                <label class="row"><input type="checkbox" id="dlo-noidlepause" ${this.settings.enableNoIdlePause !== false ? 'checked' : ''}/> 禁用无操作暂停弹窗</label>
+                <label class="row"><input type="checkbox" id="dlo-pointclaim" ${this.settings.enablePointClaim === true ? 'checked' : ''}/> 自动领取看播积分</label>
                 <div class="actions">
                     <button type="button" class="btn-ghost" id="dlo-close">关闭</button>
                     <button type="button" class="btn-primary" id="dlo-save">保存并应用</button>
@@ -1916,6 +2119,8 @@ html[dark] #dlo-settings-panel{
                     enableScreenPlusOne: !!panel.querySelector('#dlo-plus1')?.checked,
                     enableDanmakuHistory: !!panel.querySelector('#dlo-history')?.checked,
                     enableNoGiftGuide: !!panel.querySelector('#dlo-nogiftguide')?.checked,
+                    enableNoIdlePause: !!panel.querySelector('#dlo-noidlepause')?.checked,
+                    enablePointClaim: !!panel.querySelector('#dlo-pointclaim')?.checked,
                     themeMode: THEME_MODES.includes(this.settings.themeMode) ? this.settings.themeMode : 'auto'
                 };
                 saveSettings(this.settings);
@@ -1969,6 +2174,13 @@ html[dark] #dlo-settings-panel{
                 watchGiftGuidePopup();
             } else {
                 restoreGiftGuidePopups();
+            }
+            if (s.enableNoIdlePause !== false) suppressIdlePause();
+            else restoreIdlePause();
+            if (s.enablePointClaim === true) armPointClaim();
+            else {
+                pointDone = '';
+                stopPointClaim();
             }
         }
 
@@ -2030,6 +2242,9 @@ html[dark] #dlo-settings-panel{
         markGiftGuideClosed();
         watchGiftGuidePopup();
     }
+
+    // 无操作暂停：PausePop 挂载时才读 cookie，document-start 写入即可生效
+    if (settings.enableNoIdlePause !== false) suppressIdlePause();
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', () => setTimeout(main, 300));
