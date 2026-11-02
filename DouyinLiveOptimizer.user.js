@@ -3,7 +3,7 @@
 // @namespace    https://github.com/mks155
 // @homepageURL  https://github.com/mks155/DouyinLiveOptimizer
 // @icon         https://raw.githubusercontent.com/mks155/DouyinLiveOptimizer/refs/heads/main/docs/icon.svg
-// @version      1.3.1
+// @version      1.3.2
 // @description  首页默认静音、进房自动切最高画质、自动领取看播积分、不弹展馆集星浮层、不弹无操作暂停、画面弹幕悬停 +1、弹幕输入框 ↑↓ 翻历史 | Auto mute, auto best quality, auto claim watch points, no gift-wall popup, no idle-pause popup, on-video danmaku +1, send history on live.douyin.com
 // @author       mks155
 // @copyright    2026, mks155 (https://github.com/mks155)
@@ -1536,10 +1536,11 @@ __ch.postMessage({k:'ready'});
 
     // ---------- 展馆集星浮层 ----------
     // 站点的礼物引导浮层（展馆 / 粉丝团任务 / 心愿单）共用一个按天标记：
-    // localStorage.GiftGuideDateMark[类型] === 当天 就当天不再弹，点 × 关闭写的是同一个值。
     const GIFT_GUIDE_MARK_KEY = 'GiftGuideDateMark';
     const GIFT_GUIDE_EXHIBITION = 'GIFT_EXHIBITION';
-    const GIFT_GUIDE_TITLE = '点亮展馆帮主播集星';
+    const GIFT_GUIDE_CSS_ID = 'dlo-giftguide-css';
+    const GIFT_GUIDE_CSS =
+        '[data-e2e="exhibition-banner"] .dylive-tooltip{display:none!important}';
 
     /** 站点自己的日期格式：getMonth() 0 基且不补零，2026-10-25 是 "2026-9-25" */
     function giftGuideToday() {
@@ -1565,60 +1566,21 @@ __ch.postMessage({k:'ready'});
         }
     }
 
-    /** 已压住的浮层：元素 -> 自身 style 观察器（定位时站点会重写 style，得跟着再压一次） */
-    const giftGuideHidden = new Map();
-    let giftGuideObserver = null;
-
-    /** 兜底：标记失效（站点改键名或日期格式）时，浮层一出现就藏起来；按标题文案找，不依赖哈希类名 */
-    function watchGiftGuidePopup() {
-        if (giftGuideObserver) return;
-        const hide = (tip) => {
-            if (tip.style) tip.style.setProperty('display', 'none', 'important');
-            tip.setAttribute('hidden', '');
-        };
-        const suppress = (tip) => {
-            if (!tip || giftGuideHidden.has(tip)) return;
-            hide(tip);
-            const obs = new MutationObserver(() => {
-                if (tip.isConnected) hide(tip);
-            });
-            obs.observe(tip, { attributes: true, attributeFilter: ['style', 'class'] });
-            giftGuideHidden.set(tip, obs);
-        };
-        const scan = (node) => {
-            if (!node || node.nodeType !== 1) return;
-            const tip = node.closest?.('.dylvue-tooltip') || node.querySelector?.('.dylvue-tooltip');
-            if (!tip || giftGuideHidden.has(tip)) return;
-            if ((tip.textContent || '').indexOf(GIFT_GUIDE_TITLE) === -1) return;
-            suppress(tip);
-        };
-        giftGuideObserver = new MutationObserver((records) => {
-            for (const r of records) {
-                for (const node of r.addedNodes) scan(node);
-            }
-        });
-        try {
-            giftGuideObserver.observe(document.documentElement || document, { childList: true, subtree: true });
-        } catch (e) {
-            giftGuideObserver = null;
-        }
+    /** 兜底：标记失效时靠这条样式压住；只压展馆横幅里的 tooltip，别影响别的悬浮提示 */
+    function suppressGiftGuidePopup() {
+        markGiftGuideClosed();
+        if (document.getElementById(GIFT_GUIDE_CSS_ID)) return;
+        const host = document.head || document.documentElement;
+        if (!host) return; // document-start 太早，等 main() 里的 applyRoute 再加
+        const style = document.createElement('style');
+        style.id = GIFT_GUIDE_CSS_ID;
+        style.textContent = GIFT_GUIDE_CSS;
+        host.appendChild(style);
     }
 
-    /** 开关关掉时把还压着的浮层放出来；已写入的当天标记等同用户自己关过一次，不撤回 */
-    function restoreGiftGuidePopups() {
-        if (giftGuideObserver) {
-            giftGuideObserver.disconnect();
-            giftGuideObserver = null;
-        }
-        for (const [tip, obs] of giftGuideHidden) {
-            try {
-                obs.disconnect();
-                tip.style.removeProperty('display');
-                tip.removeAttribute('hidden');
-            } catch (e) {
-            }
-        }
-        giftGuideHidden.clear();
+    /** 开关关掉时撤掉兜底样式；已写入的当天标记等同用户自己关过一次，不撤回 */
+    function restoreGiftGuidePopup() {
+        document.getElementById(GIFT_GUIDE_CSS_ID)?.remove();
     }
 
     // ---------- 长时间无操作暂停 ----------
@@ -2170,10 +2132,9 @@ html[dark] #dlo-settings-panel{
             else stopMute();
             if (isRoom()) quality.run();
             if (s.enableNoGiftGuide !== false) {
-                markGiftGuideClosed();
-                watchGiftGuidePopup();
+                suppressGiftGuidePopup();
             } else {
-                restoreGiftGuidePopups();
+                restoreGiftGuidePopup();
             }
             if (s.enableNoIdlePause !== false) suppressIdlePause();
             else restoreIdlePause();
@@ -2239,8 +2200,7 @@ html[dark] #dlo-settings-panel{
 
     // 展馆集星浮层：标记要赶在组件首帧渲染前写，所以放在 document-start，不等 main()
     if (settings.enableNoGiftGuide !== false) {
-        markGiftGuideClosed();
-        watchGiftGuidePopup();
+        suppressGiftGuidePopup();
     }
 
     // 无操作暂停：PausePop 挂载时才读 cookie，document-start 写入即可生效
